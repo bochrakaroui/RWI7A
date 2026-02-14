@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pandas
+numpy
+scikit-learn
+python-multipart  # if needed for uploads
+aiofiles  # if needed for file handling
