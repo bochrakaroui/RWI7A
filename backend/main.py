@@ -73,14 +73,14 @@ async def startup_event():
     print("Loading model...")
     try:
         # Try to load pre-trained model
-        recommender = PerfumeRecommender.load('data/model.pkl')
+        recommender = PerfumeRecommender.load('../data/processed/model.pkl')
     except FileNotFoundError:
         # If not found, load data and train
         print("Pre-trained model not found, loading data...")
-        df = pd.read_csv('data/perfumes_processed.csv')
+        df = pd.read_csv('../data/processed/perfumes_processed.csv')
         recommender = PerfumeRecommender()
         recommender.fit(df)
-        recommender.save('data/model.pkl')
+        recommender.save('../data/processed/model.pkl')
     
     print("Model ready")
 
