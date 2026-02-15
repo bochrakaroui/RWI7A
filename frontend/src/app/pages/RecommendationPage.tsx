@@ -1,81 +1,115 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Sparkles, SlidersHorizontal } from 'lucide-react';
-import { perfumes, Perfume } from '../data/perfumes';
-import { PerfumeCard } from '../components/PerfumeCard';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Slider } from '../components/ui/slider';
+import { Search, Sparkles, Loader2 } from 'lucide-react';
+import { searchPerfumes, getRecommendations, getBrands, PerfumeInfo } from '../services/api';
 
 export function RecommendationPage() {
-  const [selectedPerfume1, setSelectedPerfume1] = useState('');
-  const [selectedPerfume2, setSelectedPerfume2] = useState('');
-  const [recommendations, setRecommendations] = useState<Array<Perfume & { score: number }>>([]);
-  const [showFilters, setShowFilters] = useState(false);
-  
-  // Filter states
-  const [noteFilter, setNoteFilter] = useState('all');
-  const [priceRange, setPriceRange] = useState([0, 200]);
-  const [brandFilter, setBrandFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<PerfumeInfo[]>([]);
+  const [selectedPerfume, setSelectedPerfume] = useState<PerfumeInfo | null>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [recommendations, setRecommendations] = useState<PerfumeInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [brands, setBrands] = useState<string[]>([]);
+  const [selectedBrand, setSelectedBrand] = useState<string>('');
+  const [brandInput, setBrandInput] = useState('');
+  const [showBrandDropdown, setShowBrandDropdown] = useState(false);
+  const [highlightedBrand, setHighlightedBrand] = useState<number>(-1);
+  const brandInputRef = useRef<HTMLInputElement>(null);
 
-  const brands = Array.from(new Set(perfumes.map(p => p.brand)));
-  const allNotes = Array.from(
-    new Set(
-      perfumes.flatMap(p => [...p.notes.top, ...p.notes.middle, ...p.notes.base])
-    )
-  );
-
-  const generateRecommendations = () => {
-    if (!selectedPerfume1 && !selectedPerfume2) return;
-
-    const selected = perfumes.filter(p => 
-      p.id === selectedPerfume1 || p.id === selectedPerfume2
-    );
-
-    if (selected.length === 0) return;
-
-    // Calculate similarity scores
-    const scored = perfumes
-      .filter(p => p.id !== selectedPerfume1 && p.id !== selectedPerfume2)
-      .map(perfume => {
-        let score = 0;
-        
-        selected.forEach(sel => {
-          // Check matching notes
-          const allSelectedNotes = [...sel.notes.top, ...sel.notes.middle, ...sel.notes.base];
-          const allPerfumeNotes = [...perfume.notes.top, ...perfume.notes.middle, ...perfume.notes.base];
-          const matchingNotes = allSelectedNotes.filter(note => allPerfumeNotes.includes(note));
-          score += matchingNotes.length * 10;
-
-          // Brand similarity
-          if (perfume.brand === sel.brand) score += 15;
-
-          // Price similarity
-          const priceDiff = Math.abs(perfume.price - sel.price);
-          score += Math.max(0, 20 - priceDiff / 10);
-
-          // Rating bonus
-          score += perfume.rating * 5;
-        });
-
-        return { ...perfume, score: Math.min(100, Math.round(score)) };
+  // Load brands on mount
+  useEffect(() => {
+    console.log('Loading brands...');
+    getBrands()
+      .then(data => {
+        console.log('Brands loaded:', data);
+        setBrands(data.brands || []);
       })
-      .sort((a, b) => b.score - a.score);
+      .catch(err => console.error('Failed to load brands:', err));
+  }, []);
 
-    setRecommendations(scored.slice(0, 5));
+  // Search as user types
+  useEffect(() => {
+    console.log('Search query changed:', searchQuery);
+    
+    // Don't search if a perfume is already selected (user selected from dropdown)
+    if (selectedPerfume && searchQuery === selectedPerfume.name.replace(/-/g, ' ')) {
+      return;
+    }
+    
+    if (searchQuery.length < 2) {
+      setSearchResults([]);
+      setShowDropdown(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setSearchLoading(true);
+      console.log('Searching for:', searchQuery);
+      
+      try {
+        const data = await searchPerfumes(searchQuery, selectedBrand || undefined, 10);
+        console.log('Search results:', data);
+        setSearchResults(data.results || []);
+        setShowDropdown(true);
+      } catch (err) {
+        console.error('Search failed:', err);
+        setSearchResults([]);
+      }
+      setSearchLoading(false);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, selectedBrand, selectedPerfume]);
+
+  const handleSelectPerfume = (perfume: PerfumeInfo) => {
+    console.log('Selected perfume:', perfume);
+    setSelectedPerfume(perfume);
+    setSearchQuery(perfume.name.replace(/-/g, ' '));
+    setSearchResults([]);  // Clear results to hide dropdown
+    setShowDropdown(false);
   };
 
-  const filteredRecommendations = recommendations.filter(perfume => {
-    const matchesNote = noteFilter === 'all' || 
-      [...perfume.notes.top, ...perfume.notes.middle, ...perfume.notes.base].includes(noteFilter);
-    const matchesPrice = perfume.price >= priceRange[0] && perfume.price <= priceRange[1];
-    const matchesBrand = brandFilter === 'all' || perfume.brand === brandFilter;
+  const handleGetRecommendations = async () => {
+    console.log('Get recommendations clicked, selectedPerfume:', selectedPerfume);
     
-    return matchesNote && matchesPrice && matchesBrand;
-  });
+    if (!selectedPerfume) {
+      setError('Please select a perfume first');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const data = await getRecommendations(
+        selectedPerfume.name,
+        selectedPerfume.brand,
+        5
+      );
+      console.log('Recommendations:', data);
+      setRecommendations(data.recommendations || []);
+    } catch (err) {
+      console.error('Recommendations failed:', err);
+      setError('Failed to get recommendations. Is the backend running?');
+    }
+
+    setLoading(false);
+  };
+
+  const handleClear = () => {
+    setSelectedPerfume(null);
+    setSearchQuery('');
+    setRecommendations([]);
+    setError(null);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-purple-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -83,185 +117,245 @@ export function RecommendationPage() {
           className="text-center mb-12"
         >
           <h1 className="text-5xl font-serif mb-4 bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">
-            Discover Your Scent
+            Find Your Perfect Scent
           </h1>
           <p className="text-gray-600 text-lg">
-            Select up to 2 perfumes you love, and we'll find similar fragrances for you
+            Search from 24,000+ perfumes and get AI-powered recommendations
           </p>
         </motion.div>
 
-        {/* Input Section */}
+        {/* Search Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-white rounded-3xl shadow-xl p-8 mb-12"
+          className="max-w-2xl mx-auto mb-12"
         >
-          <div className="grid md:grid-cols-2 gap-6 mb-6">
-            {/* Perfume 1 Select */}
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">First Perfume</label>
-              <Select value={selectedPerfume1} onValueChange={setSelectedPerfume1}>
-                <SelectTrigger className="w-full h-12 rounded-xl border-pink-200 focus:border-pink-400">
-                  <SelectValue placeholder="Choose a perfume..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {perfumes.map(perfume => (
-                    <SelectItem key={perfume.id} value={perfume.id}>
-                      {perfume.name} - {perfume.brand}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="bg-white rounded-2xl shadow-xl p-6">
+            
+            {/* Brand Filter Autocomplete */}
+            <div className="mb-4 relative">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Filter by Brand (Optional)
+              </label>
+              <input
+                ref={brandInputRef}
+                type="text"
+                value={selectedBrand ? selectedBrand : brandInput}
+                onChange={e => {
+                  setBrandInput(e.target.value);
+                  setSelectedBrand('');
+                  setShowBrandDropdown(true);
+                  setHighlightedBrand(0);
+                }}
+                onFocus={() => {
+                  setShowBrandDropdown(true);
+                }}
+                onBlur={() => {
+                  setTimeout(() => setShowBrandDropdown(false), 200);
+                }}
+                onKeyDown={e => {
+                  const filtered = brands.filter(b => b.toLowerCase().includes(brandInput.toLowerCase()));
+                  if (!showBrandDropdown || filtered.length === 0) return;
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setHighlightedBrand(prev => (prev + 1) % filtered.length);
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setHighlightedBrand(prev => (prev - 1 + filtered.length) % filtered.length);
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (highlightedBrand >= 0 && highlightedBrand < filtered.length) {
+                      setSelectedBrand(filtered[highlightedBrand]);
+                      setBrandInput('');
+                      setShowBrandDropdown(false);
+                    }
+                  }
+                }}
+                placeholder="Type or select a brand"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500"
+              />
+              {showBrandDropdown && (brandInput || !selectedBrand) && brands.length > 0 && (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                  <button
+                    type="button"
+                    className={`w-full px-4 py-2 text-left border-b border-gray-100 last:border-0 ${highlightedBrand === 0 ? 'bg-pink-100' : 'hover:bg-pink-50'}`}
+                    onMouseDown={() => {
+                      setSelectedBrand('');
+                      setBrandInput('');
+                      setShowBrandDropdown(false);
+                    }}
+                  >All Brands</button>
+                  {brands
+                    .filter(b => b.toLowerCase().includes(brandInput.toLowerCase()))
+                    .map((brand, idx) => (
+                      <button
+                        key={brand}
+                        type="button"
+                        className={`w-full px-4 py-2 text-left border-b border-gray-100 last:border-0 ${highlightedBrand === idx + 1 ? 'bg-pink-100' : 'hover:bg-pink-50'}`}
+                        onMouseDown={() => {
+                          setSelectedBrand(brand);
+                          setBrandInput('');
+                          setShowBrandDropdown(false);
+                        }}
+                        onMouseEnter={() => setHighlightedBrand(idx + 1)}
+                      >{brand}</button>
+                    ))}
+                </div>
+              )}
             </div>
 
-            {/* Perfume 2 Select */}
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Second Perfume (Optional)</label>
-              <Select value={selectedPerfume2} onValueChange={setSelectedPerfume2}>
-                <SelectTrigger className="w-full h-12 rounded-xl border-pink-200 focus:border-pink-400">
-                  <SelectValue placeholder="Choose another perfume..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {perfumes.map(perfume => (
-                    <SelectItem key={perfume.id} value={perfume.id}>
-                      {perfume.name} - {perfume.brand}
-                    </SelectItem>
+            {/* Search Input */}
+            <div className="relative">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Search for a Perfume
+              </label>
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    // Clear selection if user edits the input
+                   if (selectedPerfume) {
+                        setSelectedPerfume(null);
+                    }
+
+                  }}
+                  onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
+                  onBlur={() => {
+                    // Delay hiding dropdown to allow click on dropdown items
+                    setTimeout(() => setShowDropdown(false), 200);
+                  }}
+                  placeholder="Type perfume name (e.g., Sauvage, Black Opium...)"
+                  className="w-full pl-12 pr-12 py-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 text-lg"
+                />
+                {searchLoading && (
+                  <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-pink-500 animate-spin" />
+                )}
+              </div>
+
+              {/* Dropdown Results - Show only when showDropdown is true and results exist */}
+              {showDropdown && searchResults.length > 0 && (
+                <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto">
+                  {searchResults.map((perfume, index) => (
+                    <button
+                      key={`${perfume.brand}-${perfume.name}-${index}`}
+                      type="button"
+                      onMouseDown={() => handleSelectPerfume(perfume)}
+                      className="w-full px-4 py-3 text-left hover:bg-pink-50 flex justify-between items-center border-b border-gray-100 last:border-0"
+                    >
+                      <div>
+                        <div className="font-medium text-gray-900">
+                          {perfume.name.replace(/-/g, ' ')}
+                        </div>
+                        <div className="text-sm text-gray-500">{perfume.brand}</div>
+                      </div>
+                      <div className="text-sm text-gray-400">
+                        ⭐ {perfume.rating?.toFixed(2) || 'N/A'}
+                      </div>
+                    </button>
                   ))}
-                </SelectContent>
-              </Select>
+                </div>
+              )}
             </div>
-          </div>
 
-          {/* Submit Button */}
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={generateRecommendations}
-            disabled={!selectedPerfume1 && !selectedPerfume2}
-            className="w-full py-4 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            <Sparkles className="w-5 h-5" />
-            <span className="text-lg">Find Recommendations</span>
-          </motion.button>
-        </motion.div>
-
-        {/* Filters */}
-        {recommendations.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-8"
-          >
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center gap-2 text-gray-600 hover:text-pink-500 transition-colors mb-4"
-            >
-              <SlidersHorizontal className="w-5 h-5" />
-              <span>{showFilters ? 'Hide' : 'Show'} Filters</span>
-            </button>
-
-            <AnimatePresence>
-              {showFilters && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="bg-white rounded-2xl shadow-md p-6 mb-6"
-                >
-                  <div className="grid md:grid-cols-3 gap-6">
-                    {/* Note Filter */}
-                    <div>
-                      <label className="block text-sm text-gray-600 mb-2">Filter by Note</label>
-                      <Select value={noteFilter} onValueChange={setNoteFilter}>
-                        <SelectTrigger className="w-full rounded-xl">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Notes</SelectItem>
-                          {allNotes.map(note => (
-                            <SelectItem key={note} value={note}>
-                              {note}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+            {/* Selected Perfume */}
+            {selectedPerfume && (
+              <div className="mt-4 p-4 bg-gradient-to-r from-pink-50 to-purple-50 rounded-xl border border-pink-200">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-sm text-gray-500">Selected Perfume</div>
+                    <div className="font-semibold text-lg text-gray-900">
+                      {selectedPerfume.name.replace(/-/g, ' ')}
                     </div>
-
-                    {/* Brand Filter */}
-                    <div>
-                      <label className="block text-sm text-gray-600 mb-2">Filter by Brand</label>
-                      <Select value={brandFilter} onValueChange={setBrandFilter}>
-                        <SelectTrigger className="w-full rounded-xl">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Brands</SelectItem>
-                          {brands.map(brand => (
-                            <SelectItem key={brand} value={brand}>
-                              {brand}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Price Range */}
-                    <div>
-                      <label className="block text-sm text-gray-600 mb-2">
-                        Price Range: ${priceRange[0]} - ${priceRange[1]}
-                      </label>
-                      <Slider
-                        min={0}
-                        max={200}
-                        step={10}
-                        value={priceRange}
-                        onValueChange={setPriceRange}
-                        className="mt-4"
-                      />
+                    <div className="text-sm text-gray-600">
+                      {selectedPerfume.brand} • ⭐ {selectedPerfume.rating?.toFixed(2)}
                     </div>
                   </div>
-                </motion.div>
+                  <button
+                    type="button"
+                    onClick={handleClear}
+                    className="text-sm text-pink-600 hover:text-pink-800"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div className="mt-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+
+            {/* Get Recommendations Button */}
+            <button
+              type="button"
+              onClick={handleGetRecommendations}
+              disabled={!selectedPerfume || loading}
+              className={`w-full mt-6 py-4 rounded-xl font-semibold text-lg flex items-center justify-center gap-2 transition-all ${
+                selectedPerfume && !loading
+                  ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-lg hover:shadow-xl cursor-pointer'
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Finding Recommendations...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-5 h-5" />
+                  Get Recommendations
+                </>
               )}
-            </AnimatePresence>
-          </motion.div>
-        )}
+            </button>
+          </div>
+        </motion.div>
 
         {/* Recommendations Grid */}
-        {filteredRecommendations.length > 0 ? (
+        {recommendations.length > 0 && (
           <div>
-            <h2 className="text-3xl font-serif mb-8 text-gray-800">
-              Top Recommendations for You
+            <h2 className="text-3xl font-serif text-center mb-8 text-gray-800">
+              Perfumes You'll Love
             </h2>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {filteredRecommendations.map((perfume, index) => (
-                <PerfumeCard
-                  key={perfume.id}
-                  perfume={perfume}
-                  similarityScore={perfume.score}
-                  delay={index * 0.1}
-                />
+              {recommendations.map((perfume, index) => (
+                <div
+                  key={`${perfume.brand}-${perfume.name}-${index}`}
+                  className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow p-6"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-900 capitalize">
+                        {perfume.name.replace(/-/g, ' ')}
+                      </h3>
+                      <p className="text-gray-500">{perfume.brand}</p>
+                    </div>
+                    {perfume.similarity !== undefined && (
+                      <span className="px-3 py-1 bg-gradient-to-r from-pink-500 to-purple-600 text-white text-sm rounded-full">
+                        {Math.round(perfume.similarity * 100)}% Match
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+                    <span>⭐ {perfume.rating?.toFixed(2) || 'N/A'}</span>
+                    <span>📝 {perfume.review_count?.toLocaleString() || 0} reviews</span>
+                  </div>
+                  {perfume.brand_tier && (
+                    <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full capitalize">
+                      {perfume.brand_tier} tier
+                    </span>
+                  )}
+                </div>
               ))}
             </div>
           </div>
-        ) : recommendations.length > 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500 text-lg">
-              No perfumes match your current filters. Try adjusting them!
-            </p>
-          </div>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.4 }}
-            className="text-center py-12"
-          >
-            <Search className="w-16 h-16 text-pink-200 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg">
-              Select your favorite perfumes above to get personalized recommendations
-            </p>
-          </motion.div>
         )}
       </div>
     </div>

@@ -2,6 +2,7 @@ import { motion } from 'motion/react';
 import { Heart, Trash2 } from 'lucide-react';
 import { useFavorites } from '../context/FavoritesContext';
 import { PerfumeCard } from '../components/PerfumeCard';
+import logo from '../../assets/291f0be50f0ac6a9df16bb3adcc52b03aa062ef3.png';
 
 export function FavoritesPage() {
   const { favorites } = useFavorites();
@@ -67,7 +68,7 @@ export function FavoritesPage() {
             className="max-w-md mx-auto text-center py-16"
           >
             <motion.img
-              src={"C:\\Users\\Bochra\\RWI7A\\frontend\\src\\assets\\291f0be50f0ac6a9df16bb3adcc52b03aa062ef3.png"}
+              src={logo}
               alt="RWI7A Logo"
               className="w-32 h-32 mx-auto mb-6 opacity-40"
               animate={{ 
