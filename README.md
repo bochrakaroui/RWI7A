@@ -86,6 +86,28 @@ npm run dev
 
 Open `http://localhost:5173/`. The API runs on `http://127.0.0.1:8000/`.
 
+## Deploy on Render
+
+The repository includes a Render Blueprint that provisions both parts of the
+application:
+
+- `perfume-recommendation-api`: a Python web service running FastAPI.
+- `perfume-recommendation-frontend`: a static Vite site with React Router
+  fallback rules.
+
+To deploy:
+
+1. Sign in to Render and choose **New > Blueprint**.
+2. Connect this GitHub repository and keep `render.yaml` as the Blueprint path.
+3. Review the two free services and select **Deploy Blueprint**.
+4. After deployment, open the frontend URL shown by Render. The Blueprint
+   automatically passes each service's public URL to the other service.
+
+The backend build installs the pinned Python dependencies, constructs the
+versioned sparse model from the committed processed CSV, and runs the
+recommendation tests before Render starts the API. Local development continues
+to use `http://localhost:8000` and `http://localhost:5173` by default.
+
 ## Data
 
 - Raw source: `data/raw/fra_cleaned.csv`

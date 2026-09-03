@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from pathlib import Path
+import os
 import pickle
 import pandas as pd
 
@@ -20,6 +21,11 @@ BACKEND_DIR = Path(__file__).resolve().parent
 DATA_DIR = BACKEND_DIR.parent / "data" / "processed"
 DATASET_PATH = DATA_DIR / "perfumes_processed.csv"
 MODEL_PATH = DATA_DIR / "model_v2.pkl"
+FRONTEND_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("FRONTEND_ORIGIN", "http://localhost:5173").split(",")
+    if origin.strip()
+]
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -31,7 +37,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend domain
+    allow_origins=FRONTEND_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
