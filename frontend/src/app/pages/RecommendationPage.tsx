@@ -1,364 +1,199 @@
-import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Search, Sparkles, Loader2 } from 'lucide-react';
-import { searchPerfumes, getRecommendations, getBrands, PerfumeInfo } from '../services/api';
+import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import { ArrowRight, Check, FlaskConical, Loader2, Search, Sparkles, Star, Users, X } from 'lucide-react';
+import { getBrands, getRecommendations, PerfumeInfo, searchPerfumes } from '../services/api';
 
 export function RecommendationPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PerfumeInfo[]>([]);
   const [selectedPerfume, setSelectedPerfume] = useState<PerfumeInfo | null>(null);
-  const [showDropdown, setShowDropdown] = useState(false);
+  const [showResults, setShowResults] = useState(false);
   const [recommendations, setRecommendations] = useState<PerfumeInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [brands, setBrands] = useState<string[]>([]);
-  const [selectedBrand, setSelectedBrand] = useState<string>('');
+  const [selectedBrand, setSelectedBrand] = useState('');
   const [brandInput, setBrandInput] = useState('');
-  const [showBrandDropdown, setShowBrandDropdown] = useState(false);
-  const [highlightedBrand, setHighlightedBrand] = useState<number>(-1);
-  const brandInputRef = useRef<HTMLInputElement>(null);
+  const [showBrands, setShowBrands] = useState(false);
 
-  // Load brands on mount
   useEffect(() => {
-    console.log('Loading brands...');
-    getBrands()
-      .then(data => {
-        console.log('Brands loaded:', data);
-        setBrands(data.brands || []);
-      })
-      .catch(err => console.error('Failed to load brands:', err));
+    getBrands().then(data => setBrands(data.brands || [])).catch(() => setBrands([]));
   }, []);
 
-  // Search as user types
   useEffect(() => {
-    console.log('Search query changed:', searchQuery);
-    
-    // Don't search if a perfume is already selected (user selected from dropdown)
-    if (selectedPerfume && searchQuery === selectedPerfume.name.replace(/-/g, ' ')) {
-      return;
-    }
-    
-    if (searchQuery.length < 2) {
+    if (selectedPerfume && searchQuery === selectedPerfume.name.replace(/-/g, ' ')) return;
+    if (searchQuery.trim().length < 2) {
       setSearchResults([]);
-      setShowDropdown(false);
+      setShowResults(false);
       return;
     }
 
     const timer = setTimeout(async () => {
       setSearchLoading(true);
-      console.log('Searching for:', searchQuery);
-      
       try {
-        const data = await searchPerfumes(searchQuery, selectedBrand || undefined, 10);
-        console.log('Search results:', data);
+        const data = await searchPerfumes(searchQuery.trim(), selectedBrand || undefined, 10);
         setSearchResults(data.results || []);
-        setShowDropdown(true);
-      } catch (err) {
-        console.error('Search failed:', err);
+        setShowResults(true);
+      } catch {
         setSearchResults([]);
+      } finally {
+        setSearchLoading(false);
       }
-      setSearchLoading(false);
     }, 300);
-
     return () => clearTimeout(timer);
   }, [searchQuery, selectedBrand, selectedPerfume]);
 
-  const handleSelectPerfume = (perfume: PerfumeInfo) => {
-    console.log('Selected perfume:', perfume);
+  const visibleBrands = useMemo(
+    () => brands.filter(brand => brand.toLowerCase().includes(brandInput.toLowerCase())).slice(0, 12),
+    [brands, brandInput],
+  );
+
+  const selectPerfume = (perfume: PerfumeInfo) => {
     setSelectedPerfume(perfume);
     setSearchQuery(perfume.name.replace(/-/g, ' '));
-    setSearchResults([]);  // Clear results to hide dropdown
-    setShowDropdown(false);
-  };
-
-  const handleGetRecommendations = async () => {
-    console.log('Get recommendations clicked, selectedPerfume:', selectedPerfume);
-    
-    if (!selectedPerfume) {
-      setError('Please select a perfume first');
-      return;
-    }
-
-    setLoading(true);
+    setSearchResults([]);
+    setShowResults(false);
     setError(null);
-
-    try {
-      const data = await getRecommendations(
-        selectedPerfume.name,
-        selectedPerfume.brand,
-        5,
-        selectedPerfume.perfume_id
-      );
-      console.log('Recommendations:', data);
-      setRecommendations(data.recommendations || []);
-    } catch (err) {
-      console.error('Recommendations failed:', err);
-      setError('Failed to get recommendations. Is the backend running?');
-    }
-
-    setLoading(false);
   };
 
-  const handleClear = () => {
+  const clearSelection = () => {
     setSelectedPerfume(null);
     setSearchQuery('');
     setRecommendations([]);
     setError(null);
   };
 
+  const findMatches = async () => {
+    if (!selectedPerfume) {
+      setError('Choose a fragrance from the search results to continue.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getRecommendations(selectedPerfume.name, selectedPerfume.brand, 5, selectedPerfume.perfume_id);
+      setRecommendations(data.recommendations || []);
+    } catch {
+      setError('We could not reach the scent library. Please try again in a moment.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-purple-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-12"
-        >
-          <h1 className="text-5xl font-serif mb-4 bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">
-            Find Your Perfect Scent
-          </h1>
-          <p className="text-gray-600 text-lg">
-            Search from 24,000+ perfumes and get AI-powered recommendations
-          </p>
-        </motion.div>
+    <main className="min-h-[calc(100vh-5rem)] bg-background px-5 py-12 text-foreground sm:px-8 lg:px-10 lg:py-16">
+      <div className="mx-auto max-w-7xl">
+        <motion.header initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="max-w-3xl">
+          <p className="flex items-center gap-3 text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-[#8d6b43]"><span className="h-px w-8 bg-accent" />Scent concierge</p>
+          <h1 className="mt-5 font-serif text-5xl font-medium leading-[0.95] tracking-[-0.04em] sm:text-7xl">Your next signature, <span className="italic text-[#8d6b43]">decoded.</span></h1>
+          <p className="mt-6 max-w-2xl leading-7 text-[#647069]">Tell us one fragrance you love. We compare the full note pyramid and accords—not popularity—to uncover genuinely similar compositions.</p>
+        </motion.header>
 
-        {/* Search Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="max-w-2xl mx-auto mb-12"
-        >
-          <div className="bg-white rounded-2xl shadow-xl p-6">
-            
-            {/* Brand Filter Autocomplete */}
-            <div className="mb-4 relative">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Filter by Brand (Optional)
-              </label>
-              <input
-                ref={brandInputRef}
-                type="text"
-                value={selectedBrand ? selectedBrand : brandInput}
-                onChange={e => {
-                  setBrandInput(e.target.value);
-                  setSelectedBrand('');
-                  setShowBrandDropdown(true);
-                  setHighlightedBrand(0);
-                }}
-                onFocus={() => {
-                  setShowBrandDropdown(true);
-                }}
-                onBlur={() => {
-                  setTimeout(() => setShowBrandDropdown(false), 200);
-                }}
-                onKeyDown={e => {
-                  const filtered = brands.filter(b => b.toLowerCase().includes(brandInput.toLowerCase()));
-                  if (!showBrandDropdown || filtered.length === 0) return;
-                  if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    setHighlightedBrand(prev => (prev + 1) % filtered.length);
-                  } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    setHighlightedBrand(prev => (prev - 1 + filtered.length) % filtered.length);
-                  } else if (e.key === 'Enter') {
-                    e.preventDefault();
-                    if (highlightedBrand >= 0 && highlightedBrand < filtered.length) {
-                      setSelectedBrand(filtered[highlightedBrand]);
-                      setBrandInput('');
-                      setShowBrandDropdown(false);
-                    }
-                  }
-                }}
-                placeholder="Type or select a brand"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500"
-              />
-              {showBrandDropdown && (brandInput || !selectedBrand) && brands.length > 0 && (
-                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                  <button
-                    type="button"
-                    className={`w-full px-4 py-2 text-left border-b border-gray-100 last:border-0 ${highlightedBrand === 0 ? 'bg-pink-100' : 'hover:bg-pink-50'}`}
-                    onMouseDown={() => {
-                      setSelectedBrand('');
-                      setBrandInput('');
-                      setShowBrandDropdown(false);
-                    }}
-                  >All Brands</button>
-                  {brands
-                    .filter(b => b.toLowerCase().includes(brandInput.toLowerCase()))
-                    .map((brand, idx) => (
-                      <button
-                        key={brand}
-                        type="button"
-                        className={`w-full px-4 py-2 text-left border-b border-gray-100 last:border-0 ${highlightedBrand === idx + 1 ? 'bg-pink-100' : 'hover:bg-pink-50'}`}
-                        onMouseDown={() => {
-                          setSelectedBrand(brand);
-                          setBrandInput('');
-                          setShowBrandDropdown(false);
-                        }}
-                        onMouseEnter={() => setHighlightedBrand(idx + 1)}
-                      >{brand}</button>
-                    ))}
-                </div>
-              )}
+        <div className="mt-12 grid gap-8 lg:grid-cols-[0.38fr_0.62fr]">
+          <motion.aside initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }} className="rounded-[2rem] bg-primary p-7 text-primary-foreground shadow-[0_28px_70px_rgba(23,56,45,0.18)] sm:p-9">
+            <span className="grid size-12 place-items-center rounded-full border border-white/15 bg-white/10 text-[#dcc49b]"><FlaskConical className="size-5" /></span>
+            <h2 className="mt-8 font-serif text-3xl font-semibold">How your match is composed</h2>
+            <ol className="mt-8 space-y-7">
+              {[
+                ['01', 'Choose your reference', 'Select the exact perfume—not just a similar name.'],
+                ['02', 'We read every layer', 'Top, heart, base notes and accords are weighted together.'],
+                ['03', 'Receive five matches', 'Each result includes a transparent similarity score.'],
+              ].map(([number, title, copy]) => <li key={number} className="flex gap-4">
+                <span className="font-serif text-xl italic text-[#d5b77f]">{number}</span>
+                <div><h3 className="text-sm font-semibold">{title}</h3><p className="mt-1 text-sm leading-6 text-white/55">{copy}</p></div>
+              </li>)}
+            </ol>
+            <div className="mt-10 border-t border-white/15 pt-6 text-xs leading-5 text-white/55">24,063 fragrances · 1,656 notes · No popularity bias</div>
+          </motion.aside>
+
+          <motion.section initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="relative rounded-[2rem] border border-border bg-card p-6 shadow-[0_25px_70px_rgba(22,35,29,0.08)] sm:p-9">
+            <div className="flex items-center justify-between border-b border-border pb-6">
+              <div><p className="text-[0.6rem] font-semibold uppercase tracking-[0.24em] text-[#8d6b43]">Your starting point</p><h2 className="mt-2 font-serif text-3xl font-semibold">Choose a fragrance</h2></div>
+              <span className="hidden rounded-full bg-secondary px-3 py-1.5 text-[0.6rem] font-semibold uppercase tracking-wider text-[#6c5a42] sm:block">Step 1 of 1</span>
             </div>
 
-            {/* Search Input */}
-            <div className="relative">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Search for a Perfume
-              </label>
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <div className="mt-7 grid gap-5 sm:grid-cols-[0.38fr_0.62fr]">
+              <Field label="Brand" optional>
                 <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    // Clear selection if user edits the input
-                   if (selectedPerfume) {
-                        setSelectedPerfume(null);
-                    }
-
-                  }}
-                  onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
-                  onBlur={() => {
-                    // Delay hiding dropdown to allow click on dropdown items
-                    setTimeout(() => setShowDropdown(false), 200);
-                  }}
-                  placeholder="Type perfume name (e.g., Sauvage, Black Opium...)"
-                  className="w-full pl-12 pr-12 py-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 text-lg"
+                  value={selectedBrand || brandInput}
+                  onChange={event => { setBrandInput(event.target.value); setSelectedBrand(''); setShowBrands(true); }}
+                  onFocus={() => setShowBrands(true)}
+                  onBlur={() => setTimeout(() => setShowBrands(false), 160)}
+                  placeholder="Any brand"
+                  className="w-full rounded-xl border border-border bg-[#fbf8f2] px-4 py-3.5 text-sm outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
                 />
-                {searchLoading && (
-                  <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-pink-500 animate-spin" />
-                )}
-              </div>
+                {showBrands && !selectedBrand && visibleBrands.length > 0 && <div className="absolute z-30 mt-2 max-h-64 w-full overflow-y-auto rounded-xl border border-border bg-card p-1.5 shadow-xl">
+                  {visibleBrands.map(brand => <button key={brand} type="button" onMouseDown={() => { setSelectedBrand(brand); setBrandInput(''); setShowBrands(false); }} className="block w-full rounded-lg px-3 py-2.5 text-left text-sm hover:bg-secondary">{brand}</button>)}
+                </div>}
+              </Field>
 
-              {/* Dropdown Results - Show only when showDropdown is true and results exist */}
-              {showDropdown && searchResults.length > 0 && (
-                <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto">
-                  {searchResults.map((perfume, index) => (
-                    <button
-                      key={perfume.perfume_id ?? `${perfume.brand}-${perfume.name}-${index}`}
-                      type="button"
-                      onMouseDown={() => handleSelectPerfume(perfume)}
-                      className="w-full px-4 py-3 text-left hover:bg-pink-50 flex justify-between items-center border-b border-gray-100 last:border-0"
-                    >
-                      <div>
-                        <div className="font-medium text-gray-900">
-                          {perfume.name.replace(/-/g, ' ')}
-                        </div>
-                        <div className="text-sm text-gray-500">{perfume.brand}</div>
-                      </div>
-                      <div className="text-sm text-gray-400">
-                        ⭐ {perfume.rating?.toFixed(2) || 'N/A'}
-                      </div>
-                    </button>
-                  ))}
+              <Field label="Perfume name">
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={searchQuery}
+                    onChange={event => { setSearchQuery(event.target.value); if (selectedPerfume) setSelectedPerfume(null); }}
+                    onFocus={() => searchResults.length > 0 && setShowResults(true)}
+                    onBlur={() => setTimeout(() => setShowResults(false), 160)}
+                    placeholder="Sauvage, Black Opium..."
+                    className="w-full rounded-xl border border-border bg-[#fbf8f2] py-3.5 pl-11 pr-11 text-sm outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
+                  />
+                  {searchLoading && <Loader2 className="absolute right-4 top-1/2 size-4 -translate-y-1/2 animate-spin text-[#8d6b43]" />}
                 </div>
-              )}
+                <AnimatePresence>
+                  {showResults && searchResults.length > 0 && <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute z-30 mt-2 max-h-72 w-full overflow-y-auto rounded-xl border border-border bg-card p-1.5 shadow-xl">
+                    {searchResults.map((perfume, index) => <button key={perfume.perfume_id ?? `${perfume.brand}-${index}`} type="button" onMouseDown={() => selectPerfume(perfume)} className="flex w-full items-center justify-between rounded-lg px-3 py-3 text-left hover:bg-secondary">
+                      <span><span className="block font-serif text-lg font-semibold capitalize">{perfume.name.replace(/-/g, ' ')}</span><span className="text-xs text-muted-foreground">{perfume.brand}</span></span>
+                      <span className="flex items-center gap-1 text-xs text-[#8d6b43]"><Star className="size-3 fill-current" />{perfume.rating?.toFixed(2) || 'N/A'}</span>
+                    </button>)}
+                  </motion.div>}
+                </AnimatePresence>
+              </Field>
             </div>
 
-            {/* Selected Perfume */}
-            {selectedPerfume && (
-              <div className="mt-4 p-4 bg-gradient-to-r from-pink-50 to-purple-50 rounded-xl border border-pink-200">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="text-sm text-gray-500">Selected Perfume</div>
-                    <div className="font-semibold text-lg text-gray-900">
-                      {selectedPerfume.name.replace(/-/g, ' ')}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      {selectedPerfume.brand} • ⭐ {selectedPerfume.rating?.toFixed(2)}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleClear}
-                    className="text-sm text-pink-600 hover:text-pink-800"
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-            )}
+            <AnimatePresence>
+              {selectedPerfume && <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mt-6 flex items-center justify-between rounded-2xl border border-[#b28a58]/25 bg-[#f2eadc] p-4">
+                <div className="flex items-center gap-4"><span className="grid size-10 place-items-center rounded-full bg-primary text-primary-foreground"><Check className="size-4" /></span><div><p className="text-[0.58rem] font-semibold uppercase tracking-[0.2em] text-[#8d6b43]">Selected</p><p className="mt-1 font-serif text-xl font-semibold capitalize">{selectedPerfume.name.replace(/-/g, ' ')}</p><p className="text-xs text-muted-foreground">{selectedPerfume.brand} · {selectedPerfume.rating?.toFixed(2) || 'Unrated'}</p></div></div>
+                <button type="button" onClick={clearSelection} aria-label="Clear selection" className="grid size-9 place-items-center rounded-full text-muted-foreground hover:bg-white/70 hover:text-foreground"><X className="size-4" /></button>
+              </motion.div>}
+            </AnimatePresence>
 
-            {/* Error */}
-            {error && (
-              <div className="mt-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
+            {error && <p role="alert" className="mt-5 rounded-xl border border-red-600/15 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
-            {/* Get Recommendations Button */}
-            <button
-              type="button"
-              onClick={handleGetRecommendations}
-              disabled={!selectedPerfume || loading}
-              className={`w-full mt-6 py-4 rounded-xl font-semibold text-lg flex items-center justify-center gap-2 transition-all ${
-                selectedPerfume && !loading
-                  ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-lg hover:shadow-xl cursor-pointer'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Finding Recommendations...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-5 h-5" />
-                  Get Recommendations
-                </>
-              )}
+            <button type="button" onClick={findMatches} disabled={!selectedPerfume || loading} className="group mt-7 flex w-full items-center justify-center gap-3 rounded-full bg-primary px-6 py-4 text-sm font-semibold text-primary-foreground shadow-[0_15px_32px_rgba(23,56,45,0.18)] transition hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-not-allowed disabled:bg-[#d8d3ca] disabled:text-[#8e918f] disabled:shadow-none">
+              {loading ? <><Loader2 className="size-4 animate-spin" />Composing your edit...</> : <><Sparkles className="size-4" />Reveal my matches<ArrowRight className="size-4 transition-transform group-hover:translate-x-1" /></>}
             </button>
-          </div>
-        </motion.div>
+          </motion.section>
+        </div>
 
-        {/* Recommendations Grid */}
-        {recommendations.length > 0 && (
-          <div>
-            <h2 className="text-3xl font-serif text-center mb-8 text-gray-800">
-              Perfumes You'll Love
-            </h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {recommendations.map((perfume, index) => (
-                <div
-                  key={perfume.perfume_id ?? `${perfume.brand}-${perfume.name}-${index}`}
-                  className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow p-6"
-                >
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="text-xl font-semibold text-gray-900 capitalize">
-                        {perfume.name.replace(/-/g, ' ')}
-                      </h3>
-                      <p className="text-gray-500">{perfume.brand}</p>
-                    </div>
-                    {perfume.similarity !== undefined && (
-                      <span className="px-3 py-1 bg-gradient-to-r from-pink-500 to-purple-600 text-white text-sm rounded-full">
-                        {Math.round(perfume.similarity * 100)}% Match
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
-                    <span>⭐ {perfume.rating?.toFixed(2) || 'N/A'}</span>
-                    <span>📝 {perfume.review_count?.toLocaleString() || 0} reviews</span>
-                  </div>
-                  {perfume.brand_tier && (
-                    <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full capitalize">
-                      {perfume.brand_tier} tier
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
+        {recommendations.length > 0 && <motion.section initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} className="mt-20">
+          <div className="flex flex-col justify-between gap-4 border-b border-border pb-7 sm:flex-row sm:items-end">
+            <div><p className="text-[0.65rem] font-semibold uppercase tracking-[0.28em] text-[#8d6b43]">Your private edit</p><h2 className="mt-3 font-serif text-4xl font-semibold sm:text-5xl">Five scents, selected for you.</h2></div>
+            <p className="max-w-sm text-sm leading-6 text-muted-foreground">Ranked by note structure, pyramid position, and accord similarity.</p>
           </div>
-        )}
+          <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            {recommendations.map((perfume, index) => <ResultCard key={perfume.perfume_id ?? `${perfume.brand}-${index}`} perfume={perfume} rank={index + 1} />)}
+          </div>
+        </motion.section>}
       </div>
-    </div>
+    </main>
   );
+}
+
+function Field({ label, optional, children }: { label: string; optional?: boolean; children: React.ReactNode }) {
+  return <label className="relative block"><span className="mb-2 flex items-center gap-2 text-xs font-semibold text-foreground">{label}{optional && <span className="font-normal text-muted-foreground">Optional</span>}</span>{children}</label>;
+}
+
+function ResultCard({ perfume, rank }: { perfume: PerfumeInfo; rank: number }) {
+  const match = Math.round((perfume.similarity || 0) * 100);
+  return <motion.article whileHover={{ y: -5 }} className={`relative overflow-hidden rounded-[1.6rem] border border-border bg-card p-6 shadow-[0_14px_40px_rgba(22,35,29,0.06)] ${rank === 1 ? 'md:col-span-2 lg:col-span-1' : ''}`}>
+    <div className="flex items-start justify-between"><span className="font-serif text-2xl italic text-[#b5a58d]">0{rank}</span><span className="grid size-14 place-items-center rounded-full border border-[#b28a58]/30 bg-[#f3ecdf] font-serif text-xl font-semibold text-[#765936]">{match}%</span></div>
+    <p className="mt-8 text-[0.58rem] font-semibold uppercase tracking-[0.24em] text-[#8d6b43]">{perfume.brand}</p>
+    <h3 className="mt-2 min-h-14 font-serif text-2xl font-semibold capitalize leading-tight">{perfume.name.replace(/-/g, ' ')}</h3>
+    <div className="mt-6 flex items-center gap-4 border-t border-border pt-5 text-xs text-muted-foreground">
+      <span className="flex items-center gap-1.5"><Star className="size-3.5 fill-[#b28a58] text-[#b28a58]" />{perfume.rating?.toFixed(2) || 'N/A'}</span>
+      <span className="flex items-center gap-1.5"><Users className="size-3.5" />{perfume.review_count?.toLocaleString() || 0} reviews</span>
+    </div>
+  </motion.article>;
 }

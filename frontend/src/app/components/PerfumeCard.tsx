@@ -1,4 +1,4 @@
-import { Star, Heart } from 'lucide-react';
+import { Heart, Star } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Perfume } from '../data/perfumes';
 import { useFavorites } from '../context/FavoritesContext';
@@ -11,102 +11,34 @@ interface PerfumeCardProps {
 
 export function PerfumeCard({ perfume, similarityScore, delay = 0 }: PerfumeCardProps) {
   const { addFavorite, removeFavorite, isFavorite } = useFavorites();
-  const isLiked = isFavorite(perfume.id);
-
-  const handleToggleFavorite = () => {
-    if (isLiked) {
-      removeFavorite(perfume.id);
-    } else {
-      addFavorite(perfume);
-    }
-  };
+  const liked = isFavorite(perfume.id);
+  const toggleFavorite = () => liked ? removeFavorite(perfume.id) : addFavorite(perfume);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, duration: 0.4 }}
-      whileHover={{ y: -8, transition: { duration: 0.2 } }}
-      className="group relative bg-white rounded-3xl overflow-hidden shadow-md hover:shadow-2xl transition-shadow duration-300"
-    >
-      {/* Image Container */}
-      <div className="relative h-64 overflow-hidden bg-gradient-to-br from-pink-50 to-purple-50">
-        <img
-          src={perfume.image}
-          alt={perfume.name}
-          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-        />
-        
-        {/* Favorite Button */}
-        <motion.button
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={handleToggleFavorite}
-          className={`absolute top-4 right-4 w-10 h-10 rounded-full backdrop-blur-md flex items-center justify-center transition-colors ${
-            isLiked ? 'bg-pink-500 text-white' : 'bg-white/90 text-gray-600 hover:text-pink-500'
-          }`}
-        >
-          <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
-        </motion.button>
-
-        {/* Similarity Score Badge */}
-        {similarityScore !== undefined && (
-          <div className="absolute top-4 left-4 bg-gradient-to-r from-pink-500 to-purple-500 text-white px-3 py-1 rounded-full text-sm font-medium shadow-lg">
-            {similarityScore}% Match
-          </div>
-        )}
+    <motion.article initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay, duration: 0.45 }} whileHover={{ y: -6 }} className="group overflow-hidden rounded-[1.6rem] border border-border bg-card shadow-[0_16px_45px_rgba(22,35,29,0.07)]">
+      <div className="relative h-72 overflow-hidden bg-secondary">
+        <img src={perfume.image} alt={`${perfume.name} by ${perfume.brand}`} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_45%,rgba(16,35,28,0.52))]" />
+        <span className="absolute bottom-5 left-5 text-[0.6rem] font-semibold uppercase tracking-[0.24em] text-white/85">{perfume.brand}</span>
+        <button type="button" onClick={toggleFavorite} aria-label={liked ? `Remove ${perfume.name} from favorites` : `Add ${perfume.name} to favorites`} className={`absolute right-4 top-4 grid size-10 place-items-center rounded-full border backdrop-blur-md transition ${liked ? 'border-primary bg-primary text-white' : 'border-white/60 bg-white/80 text-primary hover:bg-white'}`}>
+          <Heart className={`size-4 ${liked ? 'fill-current' : ''}`} />
+        </button>
+        {similarityScore !== undefined && <span className="absolute left-4 top-4 rounded-full border border-white/40 bg-primary/80 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md">{similarityScore}% match</span>}
       </div>
 
-      {/* Content */}
       <div className="p-6">
-        {/* Brand */}
-        <p className="text-xs uppercase tracking-wider text-purple-500 mb-1">
-          {perfume.brand}
-        </p>
-
-        {/* Name */}
-        <h3 className="text-xl mb-2 text-gray-800">
-          {perfume.name}
-        </h3>
-
-        {/* Description */}
-        <p className="text-sm text-gray-500 mb-4 line-clamp-2">
-          {perfume.description}
-        </p>
-
-        {/* Notes */}
-        <div className="mb-4 space-y-2">
-          <div className="flex flex-wrap gap-1">
-            {perfume.notes.top.slice(0, 2).map(note => (
-              <span
-                key={note}
-                className="text-xs px-2 py-1 bg-pink-50 text-pink-600 rounded-full"
-              >
-                {note}
-              </span>
-            ))}
-            {perfume.notes.middle.slice(0, 1).map(note => (
-              <span
-                key={note}
-                className="text-xs px-2 py-1 bg-purple-50 text-purple-600 rounded-full"
-              >
-                {note}
-              </span>
-            ))}
-          </div>
+        <div className="flex items-start justify-between gap-4">
+          <div><h3 className="font-serif text-2xl font-semibold leading-tight">{perfume.name}</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">{perfume.description}</p></div>
+          <span className="whitespace-nowrap font-serif text-xl font-semibold text-[#765936]">${perfume.price}</span>
         </div>
-
-        {/* Rating and Price */}
-        <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-          <div className="flex items-center gap-1">
-            <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-            <span className="text-sm text-gray-700">{perfume.rating}</span>
-          </div>
-          <div className="text-lg text-gray-800">
-            ${perfume.price}
-          </div>
+        <div className="mt-5 flex flex-wrap gap-2">
+          {[...perfume.notes.top.slice(0, 2), ...perfume.notes.middle.slice(0, 1)].map(note => <span key={note} className="rounded-full border border-[#b28a58]/20 bg-[#f3ecdf] px-3 py-1 text-[0.62rem] font-semibold uppercase tracking-wider text-[#765936]">{note}</span>)}
+        </div>
+        <div className="mt-6 flex items-center justify-between border-t border-border pt-5">
+          <span className="flex items-center gap-1.5 text-sm"><Star className="size-3.5 fill-[#b28a58] text-[#b28a58]" />{perfume.rating}</span>
+          <span className="text-[0.58rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Curated selection</span>
         </div>
       </div>
-    </motion.div>
+    </motion.article>
   );
 }

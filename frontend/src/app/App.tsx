@@ -9,7 +9,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <FavoritesProvider>
-        <div className="min-h-screen bg-white">
+        <div className="min-h-screen bg-background">
           <Navigation />
           <Routes>
             <Route path="/" element={<LandingPage />} />
