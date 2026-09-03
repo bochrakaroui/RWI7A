@@ -87,7 +87,8 @@ export function RecommendationPage() {
       const data = await getRecommendations(
         selectedPerfume.name,
         selectedPerfume.brand,
-        5
+        5,
+        selectedPerfume.perfume_id
       );
       console.log('Recommendations:', data);
       setRecommendations(data.recommendations || []);
@@ -241,7 +242,7 @@ export function RecommendationPage() {
                 <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto">
                   {searchResults.map((perfume, index) => (
                     <button
-                      key={`${perfume.brand}-${perfume.name}-${index}`}
+                      key={perfume.perfume_id ?? `${perfume.brand}-${perfume.name}-${index}`}
                       type="button"
                       onMouseDown={() => handleSelectPerfume(perfume)}
                       className="w-full px-4 py-3 text-left hover:bg-pink-50 flex justify-between items-center border-b border-gray-100 last:border-0"
@@ -327,7 +328,7 @@ export function RecommendationPage() {
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
               {recommendations.map((perfume, index) => (
                 <div
-                  key={`${perfume.brand}-${perfume.name}-${index}`}
+                  key={perfume.perfume_id ?? `${perfume.brand}-${perfume.name}-${index}`}
                   className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow p-6"
                 >
                   <div className="flex justify-between items-start mb-4">

@@ -6,8 +6,20 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, List
+from pathlib import Path
+import pickle
 import pandas as pd
-from model import PerfumeRecommender
+
+try:
+    from .recommendation_engine import BRAND_TIERS, PerfumeRecommender
+except ImportError:  # Supports `python -m uvicorn main:app` from backend/.
+    from recommendation_engine import BRAND_TIERS, PerfumeRecommender
+
+
+BACKEND_DIR = Path(__file__).resolve().parent
+DATA_DIR = BACKEND_DIR.parent / "data" / "processed"
+DATASET_PATH = DATA_DIR / "perfumes_processed.csv"
+MODEL_PATH = DATA_DIR / "model_v2.pkl"
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -39,17 +51,23 @@ class SearchRequest(BaseModel):
 class RecommendRequest(BaseModel):
     perfume_name: str = Field(..., description="Name of perfume you like")
     brand: Optional[str] = Field(None, description="Brand of the perfume")
+    perfume_id: Optional[int] = Field(None, ge=0, description="Stable ID returned by search")
     top_n: int = Field(5, ge=1, le=20, description="Number of recommendations")
-    same_tier: bool = Field(True, description="Filter by same brand tier")
-    min_reviews: int = Field(100, ge=0, description="Minimum review count")
+    same_tier: bool = Field(False, description="Optionally filter by the same brand tier")
+    min_reviews: int = Field(0, ge=0, description="Optional minimum review count")
 
 
 class PerfumeInfo(BaseModel):
+    perfume_id: Optional[int] = None
     name: str
     brand: str
     rating: float
     review_count: int
     similarity: Optional[float] = None
+    cosine_similarity: Optional[float] = None
+    note_overlap_score: Optional[float] = None
+    pyramid_score: Optional[float] = None
+    accord_similarity: Optional[float] = None
     brand_tier: Optional[str] = None
 
 
@@ -72,15 +90,13 @@ async def startup_event():
     
     print("Loading model...")
     try:
-        # Try to load pre-trained model
-        recommender = PerfumeRecommender.load('../data/processed/model.pkl')
-    except FileNotFoundError:
-        # If not found, load data and train
-        print("Pre-trained model not found, loading data...")
-        df = pd.read_csv('../data/processed/perfumes_processed.csv')
+        recommender = PerfumeRecommender.load(MODEL_PATH)
+    except (FileNotFoundError, ValueError, AttributeError, EOFError, pickle.UnpicklingError) as error:
+        print(f"Building recommendation index ({error})...")
+        df = pd.read_csv(DATASET_PATH)
         recommender = PerfumeRecommender()
         recommender.fit(df)
-        recommender.save('../data/processed/model.pkl')
+        recommender.save(MODEL_PATH)
     
     print("Model ready")
 
@@ -100,7 +116,8 @@ async def health():
     return {
         "status": "healthy",
         "model_loaded": recommender is not None,
-        "total_perfumes": len(recommender.df) if recommender else 0
+        "total_perfumes": len(recommender.df) if recommender else 0,
+        "recommendation_index": recommender.diagnostics() if recommender else None,
     }
 
 
@@ -122,6 +139,7 @@ async def search_perfumes(request: SearchRequest):
     
     results = [
         PerfumeInfo(
+            perfume_id=int(row['record_id']),
             name=row['name'],
             brand=row['Brand'],
             rating=float(row['rating']),
@@ -143,6 +161,7 @@ async def get_recommendations(request: RecommendRequest):
     results_df, metadata = recommender.recommend(
         perfume_name=request.perfume_name,
         brand=request.brand,
+        perfume_id=request.perfume_id,
         top_n=request.top_n,
         same_tier=request.same_tier,
         min_reviews=request.min_reviews
@@ -153,6 +172,7 @@ async def get_recommendations(request: RecommendRequest):
     
     # Input perfume info
     input_perfume = PerfumeInfo(
+        perfume_id=metadata['input_id'],
         name=metadata['input_name'],
         brand=metadata['input_brand'],
         rating=metadata['input_rating'],
@@ -163,11 +183,16 @@ async def get_recommendations(request: RecommendRequest):
     # Recommendations
     recommendations = [
         PerfumeInfo(
+            perfume_id=int(row['record_id']),
             name=row['name'],
             brand=row['Brand'],
             rating=float(row['rating']),
             review_count=int(row['review_count']),
             similarity=float(row['similarity']),
+            cosine_similarity=float(row['cosine_similarity']),
+            note_overlap_score=float(row['note_overlap_score']),
+            pyramid_score=float(row['pyramid_score']),
+            accord_similarity=float(row['accord_similarity']),
             brand_tier=row['brand_tier']
         )
         for _, row in results_df.iterrows()
@@ -200,7 +225,6 @@ async def get_brands():
 @app.get("/tiers")
 async def get_brand_tiers():
     """Get brand tier classification"""
-    from model import BRAND_TIERS
     return BRAND_TIERS
 
 
